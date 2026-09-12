@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapa Tierra - Tiempo en España</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #0d0d0d; font-family: 'Segoe UI', sans-serif; }
+    canvas { display: block; }
+    #legend {
+      position: fixed;
+      bottom: 30px;
+      left: 30px;
+      background: rgba(13, 13, 13, 0.85);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 14px 18px;
+      color: #ccc;
+      font-size: 13px;
+      z-index: 10;
+      backdrop-filter: blur(6px);
+    }
+    #legend h3 { margin: 0 0 10px 0; font-size: 14px; color: #fff; font-weight: 500; }
+    .legend-row { display: flex; align-items: center; margin: 5px 0; }
+    .legend-color { width: 28px; height: 12px; border-radius: 2px; margin-right: 8px; border: 1px solid rgba(255,255,255,0.1); }
+    #status { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.5); font-size: 13px; z-index: 10; text-align: center; max-width: 80%; }
+  </style>
+</head>
+<body>
+  <div id="status">Iniciando...</div>
+  <div id="legend"></div>
+
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/" } }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const statusEl = document.getElementById('status');
+    function setStatus(m) { statusEl.textContent = m; }
+
+    const RADIUS = 1, BG_COLOR = 0x0d0d0d;
+    const API = 'https://api.open-meteo.com/v1/forecast';
+    const CACHE_KEY = 'weather_cache_es50k', CACHE_TTL = 60 * 60 * 1000;
+
+    const CITIES = [
+      {n:'Madrid',lat:40.41669,lon:-3.700346},{n:'Barcelona',lat:41.38792,lon:2.169919},
+      {n:'Valencia',lat:39.47024,lon:-0.376805},{n:'Sevilla',lat:37.38264,lon:-5.996295},
+      {n:'Zaragoza',lat:41.65629,lon:-0.876538},{n:'Málaga',lat:36.71965,lon:-4.420019},
+      {n:'Murcia',lat:37.98344,lon:-1.12989},{n:'Las Palmas',lat:28.12482,lon:-15.43001},
+      {n:'Bilbao',lat:43.25696,lon:-2.923441},{n:'Alicante',lat:38.3452,lon:-0.481006},
+      {n:'Córdoba',lat:37.88473,lon:-4.779152},{n:'Valladolid',lat:41.65295,lon:-4.728388},
+      {n:'Vigo',lat:42.23136,lon:-8.712447},{n:'Gijón',lat:43.54526,lon:-5.661926},
+      {n:'Granada',lat:37.17649,lon:-3.597929},{n:'A Coruña',lat:43.37087,lon:-8.395835},
+      {n:'Vitoria-Gasteiz',lat:42.84641,lon:-2.667893},{n:'Elche',lat:38.2655,lon:-0.698459},
+      {n:'Oviedo',lat:43.36026,lon:-5.844759},{n:'S.C.Tenerife',lat:28.46981,lon:-16.25486},
+      {n:'Badalona',lat:41.45014,lon:2.24742},{n:'Cartagena',lat:37.60565,lon:-0.991294},
+      {n:'Terrassa',lat:41.56095,lon:2.01044},{n:'Jerez',lat:36.68656,lon:-6.137173},
+      {n:'Sabadell',lat:41.54862,lon:2.107421},{n:'Móstoles',lat:40.32277,lon:-3.865741},
+      {n:'Pamplona',lat:42.81721,lon:-1.646767},{n:'Donostia',lat:43.32074,lon:-1.984421},
+      {n:'Burgos',lat:42.34087,lon:-3.699731},{n:'Castellón',lat:39.98598,lon:-0.037671},
+      {n:'Albacete',lat:38.99765,lon:-1.86007},{n:'Logroño',lat:42.46577,lon:-2.449995},
+      {n:'Badajoz',lat:38.8786,lon:-6.970284},{n:'Salamanca',lat:40.96497,lon:-5.663047},
+      {n:'Huelva',lat:37.2571,lon:-6.949555},{n:'Lleida',lat:41.61415,lon:0.625783},
+      {n:'Tarragona',lat:41.11866,lon:1.24533},{n:'León',lat:42.59988,lon:-5.571752},
+      {n:'Cádiz',lat:36.52969,lon:-6.292657},{n:'Santiago',lat:42.88045,lon:-8.546304},
+      {n:'Santander',lat:43.46096,lon:-3.807934},{n:'Toledo',lat:39.85678,lon:-4.024476},
+      {n:'Ciudad Real',lat:38.9861,lon:-3.927263},{n:'Marbella',lat:36.50994,lon:-4.886352},
+      {n:'Almería',lat:36.84016,lon:-2.467922},{n:'Guadalajara',lat:40.62981,lon:-3.166493},
+      {n:'Huesca',lat:42.1401,lon:-0.408898},{n:'Palma',lat:39.56951,lon:2.649966},
+      {n:'Cáceres',lat:39.47618,lon:-6.37076},{n:'Lugo',lat:43.01208,lon:-7.555851},
+      {n:'Ourense',lat:42.34001,lon:-7.864641},{n:'Pontevedra',lat:42.43362,lon:-8.648053},
+      {n:'Girona',lat:41.9818,lon:2.8237},{n:'Reus',lat:41.15482,lon:1.108676},
+      {n:'Ponferrada',lat:42.54633,lon:-6.590833},{n:'Palencia',lat:42.01246,lon:-4.531175},
+      {n:'Zamora',lat:41.50368,lon:-5.743778},{n:'Ávila',lat:40.65642,lon:-4.700323},
+      {n:'Segovia',lat:40.94943,lon:-4.119209},{n:'Cuenca',lat:40.07183,lon:-2.134005},
+      {n:'Talavera',lat:39.9598,lon:-4.834432},{n:'Ferrol',lat:43.48839,lon:-8.222509},
+      {n:'Lorca',lat:37.67131,lon:-1.698792},{n:'Puertollano',lat:38.68604,lon:-4.112146},
+      {n:'Merida',lat:38.91586,lon:-6.345606},{n:'Vila-real',lat:39.93835,lon:-0.101829},
+      {n:'Gandía',lat:38.96902,lon:-0.185187},{n:'Torrent',lat:39.43688,lon:-0.465311},
+      {n:'Sagunto',lat:39.68077,lon:-0.277977},{n:'Paterna',lat:39.50206,lon:-0.440599},
+      {n:'Alcoy',lat:38.69763,lon:-0.473096},{n:'Benidorm',lat:38.53704,lon:-0.129077},
+      {n:'Orihuela',lat:38.08395,lon:-0.944783},{n:'Elda',lat:38.47803,lon:-0.790464},
+      {n:'Torrevieja',lat:37.97747,lon:-0.683227},{n:'San Vicente',lat:38.39609,lon:-0.524928},
+      {n:'Motril',lat:36.74467,lon:-3.516718},{n:'Linares',lat:38.09362,lon:-3.635844},
+      {n:'Fuenlabrada',lat:40.28387,lon:-3.800329},{n:'Getafe',lat:40.30498,lon:-3.732677},
+      {n:'Leganés',lat:40.32642,lon:-3.758988},{n:'Alcorcón',lat:40.34912,lon:-3.828811},
+      {n:'Torrejón',lat:40.4589,lon:-3.479771},{n:'Parla',lat:40.23754,lon:-3.772741},
+      {n:'Alcalá',lat:40.48166,lon:-3.364136},{n:'Alcobendas',lat:40.54754,lon:-3.642091},
+      {n:'Rivas',lat:40.3297,lon:-3.516941},{n:'Majadahonda',lat:40.47283,lon:-3.872304},
+      {n:'Las Rozas',lat:40.31007,lon:-4.490765},{n:'S.S.Reyes',lat:40.54751,lon:-3.626394},
+      {n:'Valdemoro',lat:40.19269,lon:-3.679874},{n:'Coslada',lat:40.42594,lon:-3.565464},
+      {n:'Pozuelo',lat:40.4352,lon:-3.813062},{n:'Collado V.',lat:40.62725,lon:-4.008587},
+      {n:'Aranjuez',lat:40.03209,lon:-3.603288},{n:'Arganda',lat:40.30095,lon:-3.43808},
+      {n:'Mataró',lat:41.5375,lon:2.445278},{n:"L'Hospitalet",lat:41.35958,lon:2.099704},
+      {n:'S.Coloma',lat:41.45107,lon:2.208978},{n:'Granollers',lat:41.60821,lon:2.287789},
+      {n:'Manresa',lat:41.72517,lon:1.823353},{n:'Rubí',lat:41.49233,lon:2.031262},
+      {n:'Sant Cugat',lat:41.47186,lon:2.082139},{n:'Cerdanyola',lat:41.49137,lon:2.140769},
+      {n:'Cornellà',lat:41.35561,lon:2.070432},{n:'Sant Boi',lat:41.34739,lon:2.043103},
+      {n:'Viladecans',lat:41.31601,lon:2.020199},{n:'Prat',lat:41.33047,lon:2.093149},
+      {n:'Castelldefels',lat:41.28039,lon:1.976774},{n:'Vilanova',lat:41.22415,lon:1.725568},
+      {n:'Mollet',lat:41.54052,lon:2.213529},{n:'El Ejido',lat:36.77506,lon:-2.812738},
+      {n:'Roquetas',lat:36.76427,lon:-2.614935},{n:'Chiclana',lat:36.41915,lon:-6.149412},
+      {n:'La Línea',lat:36.16118,lon:-5.348256},{n:'El Puerto',lat:36.59695,lon:-6.227526},
+      {n:'San Fernando',lat:36.46572,lon:-6.196626},{n:'Sanlúcar',lat:36.77882,lon:-6.354198},
+      {n:'Utrera',lat:37.18142,lon:-5.781507},{n:'Alcalá G.',lat:37.33833,lon:-5.844032},
+      {n:'Dos Hermanas',lat:37.28318,lon:-5.922242},{n:'Benalmádena',lat:36.59523,lon:-4.573368},
+      {n:'Estepona',lat:36.42477,lon:-5.144903},{n:'Fuengirola',lat:36.53901,lon:-4.624353},
+      {n:'Mijas',lat:36.5957,lon:-4.637619},{n:'Torremolinos',lat:36.62179,lon:-4.500273},
+      {n:'Vélez',lat:36.77864,lon:-4.100675},{n:'Siero',lat:43.383,lon:-5.65},
+      {n:'Avilés',lat:43.55577,lon:-5.927617},{n:'Torrelavega',lat:43.35146,lon:-4.047017},
+      {n:'Irun',lat:43.33823,lon:-1.789272},{n:'Barakaldo',lat:43.29683,lon:-2.985259},
+      {n:'Getxo',lat:43.36229,lon:-3.012567},{n:'Molina S.',lat:38.05092,lon:-1.210992},
+      {n:'Calvià',lat:39.56524,lon:2.504216},{n:'Telde',lat:27.99604,lon:-15.41789},
+      {n:'S.L.Tirajana',lat:27.91272,lon:-15.54124},{n:'Arona',lat:28.10047,lon:-16.68066},
+      {n:'S.B.Tirajana',lat:27.92461,lon:-15.573},{n:'Arrecife',lat:28.95951,lon:-13.5476},
+      {n:'Ceuta',lat:35.88829,lon:-5.316195},{n:'Melilla',lat:35.29234,lon:-2.938794},
+    ];
+
+    function isIsland(c) {
+      const lat = c.lat, lon = c.lon;
+      if (lat < 35.8) return true;      // Canarias, Ceuta, Melilla
+      if (lon < -12) return true;       // Canarias occidental
+      if (lon >= 1.0 && lon <= 4.5 && lat >= 38.5 && lat <= 40.1) return true; // Baleares
+      return false;
+    }
+
+    function getCache() { try { const r = localStorage.getItem(CACHE_KEY); if (!r) return null; const c = JSON.parse(r); if (Date.now() - c.ts > CACHE_TTL) return null; return c.data; } catch { return null; } }
+    function setCache(d) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: d })); } catch {} }
+
+    async function apiFetch(url) {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 10000);
+      try { const r = await fetch(url, { signal: ctrl.signal }); clearTimeout(t); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r; }
+      catch (e) { clearTimeout(t); throw e; }
+    }
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(BG_COLOR);
+
+    function makeGridBg() {
+      const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+      const ctx = c.getContext('2d'); ctx.fillStyle = '#030303'; ctx.fillRect(0, 0, 512, 512);
+      ctx.strokeStyle = 'rgba(255,255,255,0.015)'; ctx.lineWidth = 1;
+      for (let i = 0; i <= 512; i += 32) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 512); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(512, i); ctx.stroke(); }
+      const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(4, 4); return tex;
+    }
+    scene.background = makeGridBg();
+
+    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+    camera.position.set(0.3, 1.2, 2.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; controls.dampingFactor = 0.08; controls.rotateSpeed = 0.6;
+    controls.zoomSpeed = 1.0; controls.minDistance = 1.2; controls.maxDistance = 8;
+
+    const globe = new THREE.Mesh(new THREE.SphereGeometry(RADIUS, 64, 64), new THREE.MeshBasicMaterial({ color: BG_COLOR }));
+    scene.add(globe);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(RADIUS - 0.003, RADIUS + 0.003, 128), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+    scene.add(ring);
+
+    const landGroup = new THREE.Group(); globe.add(landGroup);
+    const tempGroup = new THREE.Group(); globe.add(tempGroup);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1 });
+
+    function toXYZ(lon, lat) {
+      const lam = lon * Math.PI / 180, phi = lat * Math.PI / 180;
+      return new THREE.Vector3(-RADIUS * Math.cos(phi) * Math.cos(lam), RADIUS * Math.sin(phi), RADIUS * Math.cos(phi) * Math.sin(lam));
+    }
+    function toXYZSurface(lon, lat, alt = 0.003) {
+      const r = RADIUS + alt, lam = lon * Math.PI / 180, phi = lat * Math.PI / 180;
+      return new THREE.Vector3(-r * Math.cos(phi) * Math.cos(lam), r * Math.sin(phi), r * Math.cos(phi) * Math.sin(lam));
+    }
+
+    const COLOR_STOPS = [
+      {t:-5,r:30,g:60,b:220},{t:0,r:50,g:130,b:240},{t:5,r:40,g:190,b:230},
+      {t:10,r:50,g:210,b:140},{t:15,r:120,g:210,b:50},{t:20,r:210,g:210,b:40},
+      {t:25,r:240,g:160,b:30},{t:30,r:240,g:80,b:30},{t:35,r:220,g:30,b:30},{t:40,r:180,g:20,b:60}
+    ];
+    function lerpColor(temp) {
+      let s;
+      if (temp <= COLOR_STOPS[0].t) s = COLOR_STOPS[0];
+      else if (temp >= COLOR_STOPS[COLOR_STOPS.length-1].t) s = COLOR_STOPS[COLOR_STOPS.length-1];
+      else { for (let i = 0; i < COLOR_STOPS.length-1; i++) { if (temp >= COLOR_STOPS[i].t && temp <= COLOR_STOPS[i+1].t) { const f = (temp - COLOR_STOPS[i].t) / (COLOR_STOPS[i+1].t - COLOR_STOPS[i].t); s = { r: COLOR_STOPS[i].r + (COLOR_STOPS[i+1].r - COLOR_STOPS[i].r)*f, g: COLOR_STOPS[i].g + (COLOR_STOPS[i+1].g - COLOR_STOPS[i].g)*f, b: COLOR_STOPS[i].b + (COLOR_STOPS[i+1].b - COLOR_STOPS[i].b)*f }; break; } } }
+      if (!s) s = COLOR_STOPS[COLOR_STOPS.length-1];
+      return { r: s.r/255, g: s.g/255, b: s.b/255 };
+    }
+    function tempToCSS(t) { const c = lerpColor(t); return `rgb(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)})`; }
+    function tempToThree(t) { const c = lerpColor(t); return new THREE.Color(c.r, c.g, c.b); }
+
+    function addOutline(coords) {
+      const pts = [];
+      for (let i = 0; i < coords.length; i++) {
+        const p = toXYZ(coords[i][0], coords[i][1]); pts.push(p);
+        if (i < coords.length - 1) { const next = toXYZ(coords[i+1][0], coords[i+1][1]); if (p.distanceTo(next) > 0.8) { if (pts.length > 1) landGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat)); pts.length = 0; } }
+      }
+      if (pts.length > 1) { pts.push(pts[0].clone()); landGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat)); }
+    }
+
+    function decodeTopojson(topology, obj) {
+      const { scale, translate } = topology.transform, arcs = topology.arcs;
+      function decodeArc(idx) { const raw = idx < 0 ? arcs[~idx] : arcs[idx]; let x = 0, y = 0; const pts = raw.map(d => { x += d[0]; y += d[1]; return [x*scale[0]+translate[0], y*scale[1]+translate[1]]; }); if (idx < 0) pts.reverse(); return pts; }
+      function decodeRing(indices) { let coords = []; for (const idx of indices) { const arc = decodeArc(idx); if (coords.length) arc.shift(); coords = coords.concat(arc); } return coords; }
+      return obj.geometries.map(g => { const coords = g.arcs.map(a => Array.isArray(a[0]) ? a.map(r => decodeRing(r)) : decodeRing(a)); return { type: g.type, coordinates: g.type === 'MultiPolygon' ? coords : coords[0] }; });
+    }
+
+    const landPolygons = [];
+    let spainMainland = null;
+
+    function pointInPolygon(lon, lat, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+        if ((yi > lat) !== (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+      }
+      return inside;
+    }
+    function polygonArea(poly) {
+      let s = 0;
+      for (let i = 0; i < poly.length; i++) { const p = poly[i], n = poly[(i + 1) % poly.length]; s += p[0] * n[1] - n[0] * p[1]; }
+      return Math.abs(s / 2);
+    }
+    function isOnLand(lon, lat) { for (const poly of landPolygons) { if (pointInPolygon(lon, lat, poly)) return true; } return false; }
+
+    // Silueta simplificada de la península (respaldo si falla countries-110m).
+    // Sigue la costa y las fronteras con Portugal y Francia, sin líneas visibles.
+    const SPAIN_PENINSULA_FALLBACK = [
+      [-9.3,43.7],[-8.9,43.75],[-8.2,43.75],[-7.5,43.75],[-6.5,43.7],[-5.5,43.6],
+      [-4.5,43.5],[-3.5,43.45],[-2.5,43.4],[-1.78,43.37],[-1.5,43.3],[-1.2,43.2],
+      [-0.9,43.05],[-0.5,42.95],[-0.1,42.9],[0.3,42.82],[0.7,42.75],[1.1,42.73],
+      [1.5,42.75],[1.9,42.7],[2.2,42.55],[2.6,42.45],[3.0,42.43],[3.17,42.43],
+      [3.2,42.0],[2.9,41.4],[2.2,41.0],[1.5,40.9],[0.8,40.4],[0.0,40.0],
+      [-0.3,39.5],[-0.5,38.9],[-0.7,38.3],[-0.9,37.8],[-1.0,37.4],[-1.5,36.9],
+      [-2.0,36.8],[-2.5,36.72],[-3.5,36.72],[-4.4,36.72],[-5.3,36.0],[-5.6,36.0],
+      [-5.9,36.3],[-6.3,36.5],[-6.9,37.0],[-7.2,37.15],[-7.47,37.19],[-7.5,37.6],
+      [-7.4,38.0],[-7.4,38.4],[-7.5,38.8],[-7.5,39.2],[-7.4,39.6],[-7.2,39.9],
+      [-7.3,40.2],[-7.2,40.6],[-7.1,41.0],[-7.0,41.2],[-6.9,41.5],[-6.8,41.8],
+      [-6.9,42.0],[-7.0,42.2],[-7.5,42.25],[-8.0,42.1],[-8.5,42.05],[-8.87,41.86],
+      [-8.9,42.2],[-9.0,42.5],[-9.3,43.0]
+    ];
+    function isSpain(lon, lat) { return pointInPolygon(lon, lat, spainMainland || SPAIN_PENINSULA_FALLBACK); }
+
+    async function loadLand() {
+      const res = await apiFetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json');
+      const topo = await res.json();
+      const geoms = decodeTopojson(topo, topo.objects.land);
+      for (const g of geoms) {
+        if (g.type === 'Polygon') {
+          landPolygons.push(g.coordinates[0]);
+          addOutline(g.coordinates[0]);
+        } else if (g.type === 'MultiPolygon') {
+          for (const poly of g.coordinates) {
+            landPolygons.push(poly[0]);
+            addOutline(poly[0]);
+          }
+        }
+      }
+    }
+
+    // Forma real de la España peninsular: anillo más pequeño que contiene Madrid.
+    // land-110m fusiona Eurasia+África en un solo polígono, así que usamos countries-110m.
+    async function loadSpainShape() {
+      const res = await apiFetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+      const topo = await res.json();
+      const geoms = decodeTopojson(topo, topo.objects.countries);
+      const MAD_LON = -3.7, MAD_LAT = 40.4;
+      let best = null, bestArea = Infinity;
+      const consider = (ring) => {
+        if (!ring || ring.length < 4) return;
+        if (!pointInPolygon(MAD_LON, MAD_LAT, ring)) return;
+        const a = polygonArea(ring);
+        if (a < bestArea) { bestArea = a; best = ring; }
+      };
+      for (const g of geoms) {
+        if (g.type === 'Polygon') consider(g.coordinates[0]);
+        else if (g.type === 'MultiPolygon') for (const poly of g.coordinates) consider(poly[0]);
+      }
+      if (best) spainMainland = best;
+    }
+
+    async function fetchTemperatures() {
+      const cached = getCache();
+      if (cached) return cached;
+      const results = [], batch = 10;
+      for (let i = 0; i < CITIES.length; i += batch) {
+        const slice = CITIES.slice(i, i + batch);
+        const lats = slice.map(c => c.lat).join(','), lons = slice.map(c => c.lon).join(',');
+        setStatus(`Cargando clima... ${i}/${CITIES.length}`);
+        try {
+          const res = await apiFetch(`${API}?latitude=${lats}&longitude=${lons}&current=temperature_2m`);
+          const data = await res.json(), items = Array.isArray(data) ? data : [data];
+          for (let j = 0; j < items.length; j++) {
+            if (items[j]?.current?.temperature_2m !== undefined)
+              results.push({ name: slice[j].n, lat: slice[j].lat, lon: slice[j].lon, temp: items[j].current.temperature_2m, island: isIsland(slice[j]) });
+          }
+        } catch (e) { console.error(`Lote ${i}:`, e.message); }
+        await new Promise(r => setTimeout(r, 200));
+      }
+      if (results.length) setCache(results);
+      return results;
+    }
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const toRad = x => x * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function idwInterpolate(lat, lon, cityData, power = 2.5) {
+      let wSum = 0, vSum = 0;
+      for (const c of cityData) {
+        const d = haversine(lat, lon, c.lat, c.lon);
+        if (d < 0.1) return c.temp;
+        const w = 1 / Math.pow(d, power);
+        wSum += w; vSum += w * c.temp;
+      }
+      return vSum / wSum;
+    }
+
+    function placeData(data) {
+      // Recalcular isla por coordenadas (la caché antigua trae flags obsoletos)
+      const mainland = data.filter(c => !isIsland(c));
+      // Ceuta y Melilla están en el continente africano: no se dibujan
+      const AFRICA_NAMES = new Set(['Ceuta', 'Melilla']);
+      const islands = data.filter(c => isIsland(c) && !AFRICA_NAMES.has(c.name));
+
+      // Malla densa sobre la península con puntos pequeños y solapados (sin huecos)
+      const gridStep = 0.18;
+      const pts = [];
+      for (let lat = 36.0; lat <= 43.9; lat += gridStep) {
+        for (let lon = -9.5; lon <= 4.5; lon += gridStep) {
+          if (!isSpain(lon, lat)) continue;
+          pts.push({ lat, lon, temp: idwInterpolate(lat, lon, mainland) });
+        }
+      }
+      if (pts.length) {
+      const gridGeo = new THREE.SphereGeometry(0.0022, 6, 6);
+      const gridMat = new THREE.MeshBasicMaterial();
+      const inst = new THREE.InstancedMesh(gridGeo, gridMat, pts.length);
+      const m = new THREE.Matrix4(), col = new THREE.Color();
+      pts.forEach((p, i) => {
+        m.makeTranslation(...toXYZSurface(p.lon, p.lat).toArray());
+        inst.setMatrixAt(i, m);
+        const c = lerpColor(p.temp);
+        inst.setColorAt(i, col.setRGB(c.r, c.g, c.b));
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+      tempGroup.add(inst);
+      }
+
+      const cityDotGeo = new THREE.SphereGeometry(0.007, 10, 10);
+      for (const c of islands) {
+        const dot = new THREE.Mesh(cityDotGeo, new THREE.MeshBasicMaterial({ color: tempToThree(c.temp) }));
+        dot.position.copy(toXYZSurface(c.lon, c.lat));
+        tempGroup.add(dot);
+      }
+    }
+
+    function buildLegend() {
+      const ranges = [
+        {l:'< 0°C',t:-2},{l:'0-5°C',t:2.5},{l:'5-10°C',t:7.5},{l:'10-15°C',t:12.5},
+        {l:'15-20°C',t:17.5},{l:'20-25°C',t:22.5},{l:'25-30°C',t:27.5},{l:'30-35°C',t:32.5},{l:'> 35°C',t:37}
+      ];
+      document.getElementById('legend').innerHTML = `<h3>Temperatura (°C)</h3>` + ranges.map(r => `<div class="legend-row"><div class="legend-color" style="background:${tempToCSS(r.t)}"></div>${r.l}</div>`).join('');
+    }
+
+    async function init() {
+      try { setStatus('Cargando mapa...'); await loadLand(); } catch (e) { console.error(e); setStatus('Error mapa: ' + e.message); return; }
+      try { await loadSpainShape(); } catch (e) { console.warn('Sin frontera precisa, uso silueta local:', e.message); }
+      try { setStatus('Cargando clima...'); const data = await fetchTemperatures(); placeData(data); buildLegend(); setStatus(`${data.length} ciudades listas`); }
+      catch (e) { console.error(e); setStatus('Error clima: ' + e.message); }
+      setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
+    }
+    init();
+
+    window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+    (function animate() { requestAnimationFrame(animate); controls.update(); ring.lookAt(camera.position); renderer.render(scene, camera); })();
+  </script>
+</body>
+</html>
