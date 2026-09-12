@@ -207,11 +207,12 @@
       const { scale, translate } = topology.transform, arcs = topology.arcs;
       function decodeArc(idx) { const raw = idx < 0 ? arcs[~idx] : arcs[idx]; let x = 0, y = 0; const pts = raw.map(d => { x += d[0]; y += d[1]; return [x*scale[0]+translate[0], y*scale[1]+translate[1]]; }); if (idx < 0) pts.reverse(); return pts; }
       function decodeRing(indices) { let coords = []; for (const idx of indices) { const arc = decodeArc(idx); if (coords.length) arc.shift(); coords = coords.concat(arc); } return coords; }
-      return obj.geometries.map(g => { const coords = g.arcs.map(a => Array.isArray(a[0]) ? a.map(r => decodeRing(r)) : decodeRing(a)); return { type: g.type, coordinates: g.type === 'MultiPolygon' ? coords : coords[0] }; });
+      return obj.geometries.map(g => { const coords = g.arcs.map(a => Array.isArray(a[0]) ? a.map(r => decodeRing(r)) : decodeRing(a)); return { type: g.type, coordinates: g.type === 'MultiPolygon' ? coords : coords[0], properties: g.properties || {}, id: g.id }; });
     }
 
     const landPolygons = [];
     let spainMainland = null;
+    let canariasRings = [], balearesRings = [];
 
     function pointInPolygon(lon, lat, poly) {
       let inside = false;
@@ -247,7 +248,7 @@
     function isSpain(lon, lat) { return pointInPolygon(lon, lat, spainMainland || SPAIN_PENINSULA_FALLBACK); }
 
     async function loadLand() {
-      const res = await apiFetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json');
+      const res = await apiFetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json');
       const topo = await res.json();
       const geoms = decodeTopojson(topo, topo.objects.land);
       for (const g of geoms) {
@@ -263,25 +264,58 @@
       }
     }
 
-    // Forma real de la España peninsular: anillo más pequeño que contiene Madrid.
-    // land-110m fusiona Eurasia+África en un solo polígono, así que usamos countries-110m.
+    // Delimitación territorial de España: península, Canarias y Baleares como
+    // entes independientes. Se buscan los anillos de España en countries-50m.
     async function loadSpainShape() {
-      const res = await apiFetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+      const res = await apiFetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json');
       const topo = await res.json();
       const geoms = decodeTopojson(topo, topo.objects.countries);
       const MAD_LON = -3.7, MAD_LAT = 40.4;
-      let best = null, bestArea = Infinity;
-      const consider = (ring) => {
-        if (!ring || ring.length < 4) return;
-        if (!pointInPolygon(MAD_LON, MAD_LAT, ring)) return;
-        const a = polygonArea(ring);
-        if (a < bestArea) { bestArea = a; best = ring; }
+      const isSpainGeom = (g) => {
+        const p = g.properties || {};
+        return p.name === 'Spain' || p.ADMIN === 'Spain' ||
+          g.id === '724' || g.id === 724 ||
+          p.ADM0_A3 === 'ESP' || p.adm0_a3 === 'ESP' ||
+          p.ISO_A3 === 'ESP' || p.iso_a3 === 'ESP';
       };
-      for (const g of geoms) {
-        if (g.type === 'Polygon') consider(g.coordinates[0]);
-        else if (g.type === 'MultiPolygon') for (const poly of g.coordinates) consider(poly[0]);
+      const ringsOf = (g) => {
+        if (g.type === 'Polygon') return [g.coordinates[0]];
+        if (g.type === 'MultiPolygon') return g.coordinates.map(poly => poly[0]);
+        return [];
+      };
+      const centroid = (ring) => {
+        let sx = 0, sy = 0;
+        for (const q of ring) { sx += q[0]; sy += q[1]; }
+        return [sx / ring.length, sy / ring.length];
+      };
+      const sp = geoms.find(isSpainGeom);
+      if (sp) {
+        for (const ring of ringsOf(sp)) {
+          if (!ring || ring.length < 4) continue;
+          if (pointInPolygon(MAD_LON, MAD_LAT, ring)) {
+            if (!spainMainland || polygonArea(ring) < polygonArea(spainMainland)) spainMainland = ring;
+            continue;
+          }
+          const [cx, cy] = centroid(ring);
+          if (cy < 36 && cx < -10) canariasRings.push(ring);
+          else if (cx >= 1 && cx <= 4.5 && cy >= 38.4 && cy <= 40.3) balearesRings.push(ring);
+        }
       }
-      if (best) spainMainland = best;
+      // Respaldo: anillo más pequeño que contenga Madrid (solo península)
+      if (!spainMainland) {
+        let best = null, bestArea = Infinity;
+        const consider = (ring) => {
+          if (!ring || ring.length < 4) return;
+          if (!pointInPolygon(MAD_LON, MAD_LAT, ring)) return;
+          const a = polygonArea(ring);
+          if (a < bestArea) { bestArea = a; best = ring; }
+        };
+        for (const g of geoms) {
+          if (g.type === 'Polygon') consider(g.coordinates[0]);
+          else if (g.type === 'MultiPolygon') for (const poly of g.coordinates) consider(poly[0]);
+        }
+        if (best) spainMainland = best;
+      }
     }
 
     async function fetchTemperatures() {
@@ -324,24 +358,37 @@
       return vSum / wSum;
     }
 
-    function placeData(data) {
-      // Recalcular isla por coordenadas (la caché antigua trae flags obsoletos)
-      const mainland = data.filter(c => !isIsland(c));
-      // Ceuta y Melilla están en el continente africano: no se dibujan
-      const AFRICA_NAMES = new Set(['Ceuta', 'Melilla']);
-      const islands = data.filter(c => isIsland(c) && !AFRICA_NAMES.has(c.name));
+    // Territorio de cada ciudad: península, Canarias, Baleares o África (Ceuta/Melilla)
+    function territory(c) {
+      if (c.name === 'Ceuta' || c.name === 'Melilla') return 'africa';
+      if (c.lat < 35.5 && c.lon < -9) return 'canarias';
+      if (c.lon >= 1.0 && c.lon <= 4.5 && c.lat >= 38.5 && c.lat <= 40.1) return 'baleares';
+      return 'mainland';
+    }
 
-      // Malla densa sobre la península con puntos pequeños y solapados (sin huecos)
-      const gridStep = 0.18;
+    function inRings(lon, lat, rings) {
+      for (const r of rings) { if (pointInPolygon(lon, lat, r)) return true; }
+      return false;
+    }
+
+    const CAN_BBOX = [-18.5, -13.0, 27.5, 29.7]; // lonMin, lonMax, latMin, latMax
+    const BAL_BBOX = [1.0, 4.4, 38.6, 40.1];
+
+    function inBboxLand(lon, lat, bb) {
+      return lon >= bb[0] && lon <= bb[1] && lat >= bb[2] && lat <= bb[3] && isOnLand(lon, lat);
+    }
+
+    function addGradientGrid(latMin, latMax, lonMin, lonMax, step, radius, mask, cities) {
+      if (!cities.length) return;
       const pts = [];
-      for (let lat = 36.0; lat <= 43.9; lat += gridStep) {
-        for (let lon = -9.5; lon <= 4.5; lon += gridStep) {
-          if (!isSpain(lon, lat)) continue;
-          pts.push({ lat, lon, temp: idwInterpolate(lat, lon, mainland) });
+      for (let lat = latMin; lat <= latMax; lat += step) {
+        for (let lon = lonMin; lon <= lonMax; lon += step) {
+          if (!mask(lon, lat)) continue;
+          pts.push({ lat, lon, temp: idwInterpolate(lat, lon, cities) });
         }
       }
-      if (pts.length) {
-      const gridGeo = new THREE.SphereGeometry(0.0022, 6, 6);
+      if (!pts.length) return;
+      const gridGeo = new THREE.SphereGeometry(radius, 6, 6);
       const gridMat = new THREE.MeshBasicMaterial();
       const inst = new THREE.InstancedMesh(gridGeo, gridMat, pts.length);
       const m = new THREE.Matrix4(), col = new THREE.Color();
@@ -354,14 +401,21 @@
       inst.instanceMatrix.needsUpdate = true;
       if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
       tempGroup.add(inst);
-      }
+    }
 
-      const cityDotGeo = new THREE.SphereGeometry(0.007, 10, 10);
-      for (const c of islands) {
-        const dot = new THREE.Mesh(cityDotGeo, new THREE.MeshBasicMaterial({ color: tempToThree(c.temp) }));
-        dot.position.copy(toXYZSurface(c.lon, c.lat));
-        tempGroup.add(dot);
-      }
+    function placeData(data) {
+      const mainland = data.filter(c => territory(c) === 'mainland');
+      const canarias = data.filter(c => territory(c) === 'canarias');
+      const baleares = data.filter(c => territory(c) === 'baleares');
+
+      // Península: puntos pequeños y solapados, recortados a su silueta
+      addGradientGrid(36.0, 43.9, -9.5, 4.5, 0.13, 0.0016, (lon, lat) => isSpain(lon, lat), mainland);
+      // Canarias como ente independiente: solo sus islas, solo sus ciudades
+      addGradientGrid(CAN_BBOX[2], CAN_BBOX[3], CAN_BBOX[0], CAN_BBOX[1], 0.09, 0.0016,
+        (lon, lat) => canariasRings.length ? inRings(lon, lat, canariasRings) : inBboxLand(lon, lat, CAN_BBOX), canarias);
+      // Baleares como ente independiente: solo sus islas, solo sus ciudades
+      addGradientGrid(BAL_BBOX[2], BAL_BBOX[3], BAL_BBOX[0], BAL_BBOX[1], 0.07, 0.0016,
+        (lon, lat) => balearesRings.length ? inRings(lon, lat, balearesRings) : inBboxLand(lon, lat, BAL_BBOX), baleares);
     }
 
     function buildLegend() {
