@@ -18,6 +18,11 @@ el territorio.
     interpolado solo con sus ciudades y recortado a sus islas.
   - Ceuta y Melilla no se dibujan (están sobre el continente africano).
 - Leyenda de colores de −5 °C (azul) a 40 °C (rojo oscuro).
+- Pestaña **Calidad del aire**: puntos por ciudad (100.000+ hab.) coloreados
+  según el índice europeo AQI y panel lateral con los valores horarios
+  actuales de PM2.5, PM10, O₃, NO₂, SO₂, CO y CO₂ (Air Quality API de
+  Open-Meteo).
+- Ceuta y Melilla se muestran como puntos individuales con su temperatura.
 - Caché en `localStorage` de 1 hora para no refetchear la API.
 
 ## Requisitos
