@@ -29,9 +29,14 @@
     #tabs button { background: rgba(13,13,13,0.85); border: 1px solid rgba(255,255,255,0.15); color: #ccc; font-size: 13px; padding: 7px 16px; border-radius: 20px; cursor: pointer; font-family: inherit; backdrop-filter: blur(6px); }
     #tabs button.active { background: rgba(255,255,255,0.9); color: #0d0d0d; border-color: rgba(255,255,255,0.9); }
     #aq-panel { position: fixed; top: 100px; right: 20px; bottom: 20px; width: 320px; z-index: 10; display: none; flex-direction: column; background: rgba(13,13,13,0.88); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; backdrop-filter: blur(6px); overflow: hidden; }
-    #aq-panel h3 { margin: 0; padding: 12px 14px; font-size: 14px; color: #fff; font-weight: 500; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    #aq-panel h3 { margin: 0; padding: 12px 14px 8px; font-size: 14px; color: #fff; font-weight: 500; }
+    #aq-search { margin: 0 12px 8px; padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: #fff; font-size: 13px; font-family: inherit; outline: none; }
+    #aq-search::placeholder { color: rgba(255,255,255,0.4); }
     #aq-list { overflow-y: auto; padding: 8px 10px; }
-    .aq-city { border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+    .aq-city { border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer; }
+    .aq-city.selected { border-color: #fff; }
+    .aq-country { display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 8px 10px; margin: 6px 0 8px; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .aq-country.selected { border-color: #fff; background: rgba(255,255,255,0.16); }
     .aq-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
     .aq-name { color: #fff; font-size: 13px; font-weight: 600; }
     .aq-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; color: #0d0d0d; font-weight: 700; }
@@ -46,7 +51,7 @@
     <button id="tab-air">Calidad del aire</button>
   </div>
   <div id="legend"></div>
-  <div id="aq-panel"><h3>Calidad del aire (hora actual)</h3><div id="aq-list"></div></div>
+  <div id="aq-panel"><h3>Calidad del aire (hora actual)</h3><input id="aq-search" type="text" placeholder="Buscar ciudad..." autocomplete="off"><div id="aq-list"></div></div>
 
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/" } }
@@ -136,75 +141,54 @@
       {n:'Ceuta',lat:35.88829,lon:-5.316195},{n:'Melilla',lat:35.29234,lon:-2.938794},
     ];
 
-    // Ciudades de 100.000+ habitantes para calidad del aire
-    const AQ_CITIES = [
-      {n:"Almería",lat:36.84016,lon:-2.467922},
-      {n:"Algeciras",lat:36.12978,lon:-5.447698},
-      {n:"Cádiz",lat:36.52969,lon:-6.292657},
-      {n:"Jerez de la Frontera",lat:36.68656,lon:-6.137173},
-      {n:"Córdoba",lat:37.88473,lon:-4.779152},
-      {n:"Granada",lat:37.17649,lon:-3.597929},
-      {n:"Huelva",lat:37.2571,lon:-6.949555},
-      {n:"Jaén",lat:37.76574,lon:-3.789518},
-      {n:"Málaga",lat:36.71965,lon:-4.420019},
-      {n:"Marbella",lat:36.50994,lon:-4.886352},
-      {n:"Dos Hermanas",lat:37.28318,lon:-5.922242},
-      {n:"Sevilla",lat:37.38264,lon:-5.996295},
-      {n:"Zaragoza",lat:41.65629,lon:-0.8765379},
-      {n:"Gijón",lat:43.54526,lon:-5.661926},
-      {n:"Oviedo",lat:43.36026,lon:-5.844759},
-      {n:"Palmas de Gran Canaria (Las)",lat:28.12482,lon:-15.43001},
-      {n:"Telde",lat:27.99604,lon:-15.41789},
-      {n:"San Cristóbal de La Laguna",lat:28.48812,lon:-16.31478},
-      {n:"Santa Cruz de Tenerife",lat:28.46981,lon:-16.25486},
-      {n:"Santander",lat:43.46096,lon:-3.807934},
-      {n:"Albacete",lat:38.99765,lon:-1.86007},
-      {n:"Burgos",lat:42.34087,lon:-3.699731},
-      {n:"León",lat:42.59988,lon:-5.571752},
-      {n:"Salamanca",lat:40.96497,lon:-5.663047},
-      {n:"Valladolid",lat:41.65295,lon:-4.728388},
-      {n:"Badalona",lat:41.45014,lon:2.24742},
-      {n:"Barcelona",lat:41.38792,lon:2.169919},
-      {n:"Hospitalet de Llobregat (L')",lat:41.35958,lon:2.099704},
-      {n:"Mataró",lat:41.5375,lon:2.445278},
-      {n:"Sabadell",lat:41.54862,lon:2.107421},
-      {n:"Santa Coloma de Gramenet",lat:41.45107,lon:2.208978},
-      {n:"Terrassa",lat:41.56095,lon:2.01044},
-      {n:"Lleida",lat:41.61415,lon:0.6257825},
-      {n:"Reus",lat:41.15482,lon:1.108676},
-      {n:"Tarragona",lat:41.11866,lon:1.24533},
-      {n:"Badajoz",lat:38.8786,lon:-6.970284},
-      {n:"Coruña (A)",lat:43.37087,lon:-8.395835},
-      {n:"Ourense",lat:42.34001,lon:-7.864641},
-      {n:"Vigo",lat:42.23136,lon:-8.712447},
-      {n:"Palma",lat:39.56951,lon:2.649966},
-      {n:"Logroño",lat:42.46577,lon:-2.449995},
-      {n:"Alcalá de Henares",lat:40.48166,lon:-3.364136},
-      {n:"Alcobendas",lat:40.54754,lon:-3.642091},
-      {n:"Alcorcón",lat:40.34912,lon:-3.828811},
-      {n:"Fuenlabrada",lat:40.28387,lon:-3.800329},
-      {n:"Getafe",lat:40.30498,lon:-3.732677},
-      {n:"Leganés",lat:40.32642,lon:-3.758988},
-      {n:"Madrid",lat:40.41669,lon:-3.700346},
-      {n:"Móstoles",lat:40.32277,lon:-3.865741},
-      {n:"Parla",lat:40.23754,lon:-3.772741},
-      {n:"Torrejón de Ardoz",lat:40.4589,lon:-3.479771},
-      {n:"Cartagena",lat:37.60565,lon:-0.9912944},
-      {n:"Murcia",lat:37.98344,lon:-1.12989},
-      {n:"Pamplona/Iruña",lat:42.81721,lon:-1.646767},
-      {n:"Vitoria-Gasteiz",lat:42.84641,lon:-2.667893},
-      {n:"Donostia-San Sebastián",lat:43.32074,lon:-1.984421},
-      {n:"Bilbao",lat:43.25696,lon:-2.923441},
-      {n:"Alicante/Alacant",lat:38.3452,lon:-0.481006},
-      {n:"Elche/Elx",lat:38.2655,lon:-0.6984587},
-      {n:"Torrevieja",lat:37.97747,lon:-0.6832271},
-      {n:"Castellón de la Plana/Castelló de la Plana",lat:39.98598,lon:-0.0376709},
-      {n:"Valencia",lat:39.47024,lon:-0.3768049},
+    // Francia (world_cities_geoname.csv, country -> France): puntos sin interpolar
+    const FRANCE_CITIES = [
+      {n:"Aix-en-Provence",lat:43.528301,lon:5.44973},
+      {n:"Amiens",lat:49.900002,lon:2.3},
+      {n:"Angers",lat:47.466671,lon:-0.55},
+      {n:"Antibes",lat:43.562408,lon:7.12777},
+      {n:"Arles",lat:43.676811,lon:4.63031},
+      {n:"Avignon",lat:43.948341,lon:4.80892},
+      {n:"Beaune",lat:47.033329,lon:4.83333},
+      {n:"Besançon",lat:47.248779,lon:6.01815},
+      {n:"Biarritz",lat:43.480122,lon:-1.55558},
+      {n:"Bordeaux",lat:44.840439,lon:-0.5805},
+      {n:"Brest",lat:48.400002,lon:-4.48333},
+      {n:"Cannes",lat:43.55135,lon:7.01275},
+      {n:"Carcassonne",lat:43.216671,lon:2.35},
+      {n:"Clermont-Ferrand",lat:45.779659,lon:3.08628},
+      {n:"Dijon",lat:47.316669,lon:5.01667},
+      {n:"Grenoble",lat:45.166672,lon:5.71667},
+      {n:"Le Havre",lat:49.493801,lon:0.10767},
+      {n:"Le Mans",lat:48.0,lon:0.2},
+      {n:"Lille",lat:50.632969,lon:3.05858},
+      {n:"Limoges",lat:45.831532,lon:1.2578},
+      {n:"Lourdes",lat:43.099998,lon:-0.05},
+      {n:"Lyon",lat:45.748459,lon:4.84671},
+      {n:"Marseille",lat:43.296951,lon:5.38107},
+      {n:"Metz",lat:49.11911,lon:6.17269},
+      {n:"Montpellier",lat:43.61092,lon:3.87723},
+      {n:"Mulhouse",lat:47.75,lon:7.33333},
+      {n:"Nantes",lat:47.217251,lon:-1.55336},
+      {n:"Nice",lat:43.703129,lon:7.26608},
+      {n:"Nîmes",lat:43.833328,lon:4.35},
+      {n:"Orléans",lat:47.902889,lon:1.90389},
+      {n:"Paris",lat:48.853409,lon:2.3488},
+      {n:"Perpignan",lat:42.697639,lon:2.89541},
+      {n:"Reims",lat:49.25,lon:4.03333},
+      {n:"Rennes",lat:48.11198,lon:-1.67429},
+      {n:"Rouen",lat:49.44313,lon:1.09932},
+      {n:"Saint-Malo",lat:48.650002,lon:-2.01667},
+      {n:"Saint-Étienne",lat:45.433331,lon:4.4},
+      {n:"Strasbourg",lat:48.58342,lon:7.74296},
+      {n:"Toulon",lat:43.116669,lon:5.93333},
+      {n:"Toulouse",lat:43.604259,lon:1.44367},
+      {n:"Tours",lat:47.383331,lon:0.68333},
     ];
 
     const AQ_API = 'https://air-quality-api.open-meteo.com/v1/air-quality';
     const AQ_VARS = 'pm10,pm2_5,ozone,sulphur_dioxide,nitrogen_dioxide,carbon_dioxide,carbon_monoxide';
-    const AQ_CACHE_KEY = 'air_cache_es100k', AQ_TTL = 60 * 60 * 1000;
+    const AQ_CACHE_KEY = 'air_cache_es_fr', AQ_TTL = 60 * 60 * 1000;
 
     // Índice europeo de calidad del aire (EEA): peor nivel entre contaminantes
     const AQI_LEVELS = [
@@ -275,6 +259,7 @@
     const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1 });
 
     let mode = 'temp', aqData = null, aqLoading = false;
+    let aqDots = [], aqSel = null, camAnim = null;
 
     function toXYZ(lon, lat) {
       const lam = lon * Math.PI / 180, phi = lat * Math.PI / 180;
@@ -447,6 +432,32 @@
       return results;
     }
 
+    const FR_CACHE_KEY = 'weather_cache_fr';
+    function getFrCache() { try { const r = localStorage.getItem(FR_CACHE_KEY); if (!r) return null; const c = JSON.parse(r); if (Date.now() - c.ts > CACHE_TTL) return null; return c.data; } catch { return null; } }
+    function setFrCache(d) { try { localStorage.setItem(FR_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: d })); } catch {} }
+
+    async function fetchFranceTemps() {
+      const cached = getFrCache();
+      if (cached) return cached;
+      const results = [], batch = 10;
+      for (let i = 0; i < FRANCE_CITIES.length; i += batch) {
+        const slice = FRANCE_CITIES.slice(i, i + batch);
+        const lats = slice.map(c => c.lat).join(','), lons = slice.map(c => c.lon).join(',');
+        setStatus(`Cargando clima Francia... ${i}/${FRANCE_CITIES.length}`);
+        try {
+          const res = await apiFetch(`${API}?latitude=${lats}&longitude=${lons}&current=temperature_2m`);
+          const data = await res.json(), items = Array.isArray(data) ? data : [data];
+          for (let j = 0; j < items.length; j++) {
+            if (items[j]?.current?.temperature_2m !== undefined)
+              results.push({ name: slice[j].n, lat: slice[j].lat, lon: slice[j].lon, temp: items[j].current.temperature_2m, country: 'FR' });
+          }
+        } catch (e) { console.error(`Francia lote ${i}:`, e.message); }
+        await new Promise(r => setTimeout(r, 200));
+      }
+      if (results.length) setFrCache(results);
+      return results;
+    }
+
     function haversine(lat1, lon1, lat2, lon2) {
       const toRad = x => x * Math.PI / 180;
       const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
@@ -511,22 +522,30 @@
     }
 
     function placeData(data) {
-      const mainland = data.filter(c => territory(c) === 'mainland');
-      const canarias = data.filter(c => territory(c) === 'canarias');
-      const baleares = data.filter(c => territory(c) === 'baleares');
-      const africa = data.filter(c => territory(c) === 'africa');
+      const es = data.filter(c => (c.country || 'ES') === 'ES');
+      const fr = data.filter(c => c.country === 'FR');
+      const mainland = es.filter(c => territory(c) === 'mainland');
+      const canarias = es.filter(c => territory(c) === 'canarias');
+      const baleares = es.filter(c => territory(c) === 'baleares');
+      const africa = es.filter(c => territory(c) === 'africa');
 
       // Península: puntos pequeños y solapados, recortados a su silueta
-      addGradientGrid(36.0, 43.9, -9.5, 4.5, 0.13, 0.0016, (lon, lat) => isSpain(lon, lat), mainland);
+      addGradientGrid(36.0, 43.9, -9.5, 4.5, 0.09, 0.0011, (lon, lat) => isSpain(lon, lat), mainland);
       // Canarias como ente independiente: solo sus islas, solo sus ciudades
-      addGradientGrid(CAN_BBOX[2], CAN_BBOX[3], CAN_BBOX[0], CAN_BBOX[1], 0.09, 0.0016,
+      addGradientGrid(CAN_BBOX[2], CAN_BBOX[3], CAN_BBOX[0], CAN_BBOX[1], 0.06, 0.0011,
         (lon, lat) => canariasRings.length ? inRings(lon, lat, canariasRings) : inBboxLand(lon, lat, CAN_BBOX), canarias);
       // Baleares como ente independiente: solo sus islas, solo sus ciudades
-      addGradientGrid(BAL_BBOX[2], BAL_BBOX[3], BAL_BBOX[0], BAL_BBOX[1], 0.07, 0.0016,
+      addGradientGrid(BAL_BBOX[2], BAL_BBOX[3], BAL_BBOX[0], BAL_BBOX[1], 0.05, 0.0011,
         (lon, lat) => balearesRings.length ? inRings(lon, lat, balearesRings) : inBboxLand(lon, lat, BAL_BBOX), baleares);
-      // Ceuta y Melilla: puntos individuales con su temperatura
-      const dotGeo = new THREE.SphereGeometry(0.007, 10, 10);
+      // Ceuta y Melilla: puntos individuales con su temperatura (mismo tamaño que el resto)
+      const dotGeo = new THREE.SphereGeometry(0.0011, 6, 6);
       for (const c of africa) {
+        const dot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: tempToThree(c.temp) }));
+        dot.position.copy(toXYZSurface(c.lon, c.lat));
+        tempGroup.add(dot);
+      }
+      // Francia: puntos individuales sin interpolar, mismo tamaño que España
+      for (const c of fr) {
         const dot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: tempToThree(c.temp) }));
         dot.position.copy(toXYZSurface(c.lon, c.lat));
         tempGroup.add(dot);
@@ -564,11 +583,19 @@
     async function fetchAirQuality() {
       const cached = getAqCache();
       if (cached) return cached;
+      const results = [];
+      results.push(...await fetchAqList(CITIES, 'ES', 'Cargando aire ES'));
+      results.push(...await fetchAqList(FRANCE_CITIES, 'FR', 'Cargando aire FR'));
+      if (results.length) setAqCache(results);
+      return results;
+    }
+
+    async function fetchAqList(list, country, label) {
       const results = [], batch = 10;
-      for (let i = 0; i < AQ_CITIES.length; i += batch) {
-        const slice = AQ_CITIES.slice(i, i + batch);
+      for (let i = 0; i < list.length; i += batch) {
+        const slice = list.slice(i, i + batch);
         const lats = slice.map(c => c.lat).join(','), lons = slice.map(c => c.lon).join(',');
-        setStatus(`Cargando aire... ${i}/${AQ_CITIES.length}`);
+        setStatus(`${label}... ${i}/${list.length}`);
         try {
           const res = await apiFetch(`${AQ_API}?latitude=${lats}&longitude=${lons}&hourly=${AQ_VARS}`);
           const data = await res.json(), items = Array.isArray(data) ? data : [data];
@@ -582,30 +609,102 @@
               sulphur_dioxide: val('sulphur_dioxide'), nitrogen_dioxide: val('nitrogen_dioxide'),
               carbon_dioxide: val('carbon_dioxide'), carbon_monoxide: val('carbon_monoxide')
             };
-            results.push({ name: slice[j].n, lat: slice[j].lat, lon: slice[j].lon, p, aqi: overallAQI(p) });
+            results.push({ name: slice[j].n, lat: slice[j].lat, lon: slice[j].lon, p, aqi: overallAQI(p), country });
           }
-        } catch (e) { console.error(`Aire lote ${i}:`, e.message); }
+        } catch (e) { console.error(`Aire ${country} lote ${i}:`, e.message); }
         await new Promise(r => setTimeout(r, 200));
       }
-      if (results.length) setAqCache(results);
       return results;
     }
 
     function fmt(v) { return v == null ? '—' : (Math.round(v * 10) / 10); }
 
+    const AQ_KEYS = ['pm2_5', 'pm10', 'ozone', 'nitrogen_dioxide', 'sulphur_dioxide'];
+    let aqGradientMats = [];
+
+    function idwPollutants(lat, lon, cities) {
+      const acc = {}, wsum = {};
+      for (const k of AQ_KEYS) { acc[k] = 0; wsum[k] = 0; }
+      for (const c of cities) {
+        const d = haversine(lat, lon, c.lat, c.lon);
+        if (d < 0.1) return c.p;
+        const w = 1 / Math.pow(d, 2.5);
+        for (const k of AQ_KEYS) { const v = c.p[k]; if (v != null) { acc[k] += w * v; wsum[k] += w; } }
+      }
+      const out = {};
+      for (const k of AQ_KEYS) out[k] = wsum[k] ? acc[k] / wsum[k] : null;
+      return out;
+    }
+
+    function addAqGradientGrid(latMin, latMax, lonMin, lonMax, step, radius, mask, cities) {
+      if (!cities.length) return;
+      const pts = [];
+      for (let lat = latMin; lat <= latMax; lat += step) {
+        for (let lon = lonMin; lon <= lonMax; lon += step) {
+          if (!mask(lon, lat)) continue;
+          pts.push({ lat, lon, aqi: overallAQI(idwPollutants(lat, lon, cities)) });
+        }
+      }
+      if (!pts.length) return;
+      const mat = new THREE.MeshBasicMaterial({ transparent: true });
+      const inst = new THREE.InstancedMesh(new THREE.SphereGeometry(radius, 6, 6), mat, pts.length);
+      const m = new THREE.Matrix4(), col = new THREE.Color();
+      pts.forEach((p, i) => {
+        m.makeTranslation(...toXYZSurface(p.lon, p.lat).toArray());
+        inst.setMatrixAt(i, m);
+        inst.setColorAt(i, col.set(AQI_LEVELS[p.aqi].c));
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+      aqGradientMats.push(mat);
+      aqGroup.add(inst);
+    }
+
     function placeAirDots(data) {
-      const geo = new THREE.SphereGeometry(0.007, 10, 10);
+      aqDots = [];
+      aqGradientMats = [];
+      const es = data.filter(c => (c.country || 'ES') === 'ES');
+      const mainland = es.filter(c => territory(c) === 'mainland');
+      const canarias = es.filter(c => territory(c) === 'canarias');
+      const baleares = es.filter(c => territory(c) === 'baleares');
+
+      // Degradado interpolado por territorio, igual que la temperatura
+      addAqGradientGrid(36.0, 43.9, -9.5, 4.5, 0.09, 0.0011, (lon, lat) => isSpain(lon, lat), mainland);
+      addAqGradientGrid(CAN_BBOX[2], CAN_BBOX[3], CAN_BBOX[0], CAN_BBOX[1], 0.06, 0.0011,
+        (lon, lat) => canariasRings.length ? inRings(lon, lat, canariasRings) : inBboxLand(lon, lat, CAN_BBOX), canarias);
+      addAqGradientGrid(BAL_BBOX[2], BAL_BBOX[3], BAL_BBOX[0], BAL_BBOX[1], 0.05, 0.0011,
+        (lon, lat) => balearesRings.length ? inRings(lon, lat, balearesRings) : inBboxLand(lon, lat, BAL_BBOX), baleares);
+
+      // Puntos de ciudad (seleccionables) del mismo tamaño, sin interpolar
+      const geo = new THREE.SphereGeometry(0.0011, 6, 6);
       for (const c of data) {
-        const dot = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color(AQI_LEVELS[c.aqi].c) }));
+        const dot = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color(AQI_LEVELS[c.aqi].c), transparent: true }));
         dot.position.copy(toXYZSurface(c.lon, c.lat));
+        dot.userData.name = c.name;
+        dot.userData.country = c.country || 'ES';
         aqGroup.add(dot);
+        aqDots.push(dot);
       }
     }
 
+    const COUNTRY_NAMES = { ES: 'España', FR: 'Francia' };
+
+    function countryStats(data, code) {
+      const cs = data.filter(c => (c.country || 'ES') === code);
+      if (!cs.length) return null;
+      let latMin = 90, latMax = -90, lonMin = 180, lonMax = -180, sLat = 0, sLon = 0;
+      for (const c of cs) {
+        latMin = Math.min(latMin, c.lat); latMax = Math.max(latMax, c.lat);
+        lonMin = Math.min(lonMin, c.lon); lonMax = Math.max(lonMax, c.lon);
+        sLat += c.lat; sLon += c.lon;
+      }
+      return { n: cs.length, lat: sLat / cs.length, lon: sLon / cs.length, diag: Math.hypot(latMax - latMin, lonMax - lonMin) };
+    }
+
     function buildAqPanel(data) {
-      const rows = data.map(c => {
+      const cityRow = (c) => {
         const lvl = AQI_LEVELS[c.aqi];
-        return `<div class="aq-city"><div class="aq-head"><span class="aq-name">${c.name}</span>` +
+        return `<div class="aq-city" data-name="${c.name}" data-country="${c.country || 'ES'}" data-lat="${c.lat}" data-lon="${c.lon}"><div class="aq-head"><span class="aq-name">${c.name}</span>` +
           `<span class="aq-badge" style="background:${lvl.c}">${lvl.n}</span></div>` +
           `<div class="aq-grid">` +
           `<span>PM2.5 <b>${fmt(c.p.pm2_5)}</b></span><span>PM10 <b>${fmt(c.p.pm10)}</b></span>` +
@@ -613,9 +712,50 @@
           `<span>SO₂ <b>${fmt(c.p.sulphur_dioxide)}</b></span><span>CO <b>${fmt(c.p.carbon_monoxide)}</b></span>` +
           `<span>CO₂ <b>${fmt(c.p.carbon_dioxide)}</b></span><span>µg/m³</span>` +
           `</div></div>`;
-      }).join('');
-      document.getElementById('aq-list').innerHTML = rows;
+      };
+      let html = '';
+      for (const code of ['ES', 'FR']) {
+        const st = countryStats(data, code);
+        if (!st) continue;
+        const cs = data.filter(c => (c.country || 'ES') === code);
+        html += `<div class="aq-country" data-country="${code}" data-lat="${st.lat}" data-lon="${st.lon}" data-diag="${st.diag}">` +
+          `<span>${COUNTRY_NAMES[code]} (${st.n})</span><span>⌖</span></div>` +
+          cs.map(cityRow).join('');
+      }
+      document.getElementById('aq-list').innerHTML = html;
     }
+
+    function focusOn(lon, lat, dist) {
+      const dir = toXYZSurface(lon, lat, 0.01).normalize();
+      camAnim = { from: camera.position.clone(), to: dir.multiplyScalar(dist || controls.minDistance), t: 0 };
+    }
+
+    function applyAqSelection() {
+      const has = !!aqSel;
+      const cityOn = (el) => has && aqSel.kind === 'city' && el.dataset.name === aqSel.name;
+      const ctryOn = (el) => has && aqSel.kind === 'country' && el.dataset.country === aqSel.country;
+      document.querySelectorAll('#aq-list .aq-city').forEach(el => el.classList.toggle('selected', cityOn(el)));
+      document.querySelectorAll('#aq-list .aq-country').forEach(el => el.classList.toggle('selected', ctryOn(el)));
+      for (const d of aqDots) {
+        const on = !has || (aqSel.kind === 'city' ? d.userData.name === aqSel.name : d.userData.country === aqSel.country);
+        d.material.opacity = on ? 1 : 0.22;
+      }
+      for (const mt of aqGradientMats) mt.opacity = !has ? 1 : (aqSel.kind === 'country' && aqSel.country === 'ES' ? 1 : 0.25);
+    }
+
+    function selectAqCity(name, lat, lon) {
+      aqSel = (aqSel && aqSel.kind === 'city' && aqSel.name === name) ? null : { kind: 'city', name };
+      applyAqSelection();
+      if (aqSel) focusOn(lon, lat);
+    }
+
+    function selectAqCountry(country, lat, lon, diag) {
+      aqSel = (aqSel && aqSel.kind === 'country' && aqSel.country === country) ? null : { kind: 'country', country };
+      applyAqSelection();
+      if (aqSel) focusOn(lon, lat, Math.min(3.2, Math.max(1.35, 1.2 + diag * 0.045)));
+    }
+
+    function normStr(s) { return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 
     async function ensureAir() {
       if (aqData || aqLoading) return;
@@ -646,16 +786,48 @@
     async function init() {
       try { setStatus('Cargando mapa...'); await loadLand(); } catch (e) { console.error(e); setStatus('Error mapa: ' + e.message); return; }
       try { await loadSpainShape(); } catch (e) { console.warn('Sin frontera precisa, uso silueta local:', e.message); }
-      try { setStatus('Cargando clima...'); const data = await fetchTemperatures(); placeData(data); buildLegend(); setStatus(`${data.length} ciudades listas`); }
+      try { setStatus('Cargando clima...'); const data = await fetchTemperatures(); const fr = await fetchFranceTemps(); const all = data.concat(fr); placeData(all); buildLegend(); setStatus(`${all.length} ciudades listas`); }
       catch (e) { console.error(e); setStatus('Error clima: ' + e.message); }
       document.getElementById('tab-temp').addEventListener('click', () => setMode('temp'));
       document.getElementById('tab-air').addEventListener('click', () => setMode('air'));
+      document.getElementById('aq-list').addEventListener('click', (e) => {
+        const cy = e.target.closest('.aq-country');
+        if (cy) { selectAqCountry(cy.dataset.country, parseFloat(cy.dataset.lat), parseFloat(cy.dataset.lon), parseFloat(cy.dataset.diag)); return; }
+        const el = e.target.closest('.aq-city');
+        if (!el) return;
+        selectAqCity(el.dataset.name, parseFloat(el.dataset.lat), parseFloat(el.dataset.lon));
+      });
+      document.getElementById('aq-search').addEventListener('input', (e) => {
+        const q = normStr(e.target.value);
+        document.querySelectorAll('#aq-list .aq-city').forEach(el => {
+          el.style.display = normStr(el.dataset.name).includes(q) ? '' : 'none';
+        });
+        document.querySelectorAll('#aq-list .aq-country').forEach(h => {
+          let any = normStr(h.textContent).includes(q), el = h.nextElementSibling;
+          while (el && !el.classList.contains('aq-country')) {
+            if (el.style.display !== 'none') any = true;
+            el = el.nextElementSibling;
+          }
+          h.style.display = any ? '' : 'none';
+        });
+      });
       setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
     }
     init();
 
     window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-    (function animate() { requestAnimationFrame(animate); controls.update(); ring.lookAt(camera.position); renderer.render(scene, camera); })();
+    (function animate() {
+      requestAnimationFrame(animate);
+      if (camAnim) {
+        camAnim.t = Math.min(1, camAnim.t + 0.035);
+        const k = camAnim.t * camAnim.t * (3 - 2 * camAnim.t);
+        camera.position.lerpVectors(camAnim.from, camAnim.to, k);
+        if (camAnim.t >= 1) camAnim = null;
+      }
+      controls.update();
+      ring.lookAt(camera.position);
+      renderer.render(scene, camera);
+    })();
   </script>
 </body>
 </html>
